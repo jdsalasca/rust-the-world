@@ -25,7 +25,8 @@ fn tile_color(tile: Tile) -> Color {
 #[macroquad::main(window_conf)]
 async fn main() {
     let map = Map::generate(7);
-    let focus = map.town_spawn();
+    let mut pos = map.town_spawn();
+    let mut facing_right = true;
     let shot = std::env::args().nth(1).filter(|flag| flag == "--shot");
     let shot_path = std::env::args().nth(2);
     let mut frame = 0;
@@ -35,13 +36,42 @@ async fn main() {
             break;
         }
 
+        let dt = get_frame_time();
+        let mut dir = Vec2::ZERO;
+        if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
+            dir.y -= 1.0;
+        }
+        if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
+            dir.y += 1.0;
+        }
+        if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
+            dir.x -= 1.0;
+        }
+        if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
+            dir.x += 1.0;
+        }
+        if dir != Vec2::ZERO {
+            let delta = dir.normalize() * 140.0 * dt;
+            let next_x = vec2(pos.x + delta.x, pos.y);
+            if map.walkable(next_x, 9.0) {
+                pos.x = next_x.x;
+            }
+            let next_y = vec2(pos.x, pos.y + delta.y);
+            if map.walkable(next_y, 9.0) {
+                pos.y = next_y.y;
+            }
+            if delta.x != 0.0 {
+                facing_right = delta.x > 0.0;
+            }
+        }
+
         let mut camera = Camera2D::from_display_rect(Rect::new(
             0.0,
             0.0,
             screen_width() / 2.0,
             screen_height() / 2.0,
         ));
-        camera.target = map.clamp_camera(focus);
+        camera.target = map.clamp_camera(pos);
         set_camera(&camera);
 
         clear_background(Color::from_rgba(24, 22, 20, 255));
@@ -56,7 +86,8 @@ async fn main() {
                 );
             }
         }
-        draw_circle(focus.x, focus.y, 10.0, WHITE);
+        draw_circle(pos.x, pos.y, 10.0, WHITE);
+        draw_rectangle(pos.x - 2.0, pos.y - 6.0, 3.0, 3.0, if facing_right { YELLOW } else { BLACK });
 
         set_default_camera();
         draw_text("rust-the-world", 20.0, 40.0, 32.0, WHITE);

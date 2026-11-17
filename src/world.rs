@@ -49,12 +49,18 @@ impl Rng {
 
 pub struct Map {
     pub tiles: Vec<Tile>,
+    pub w: i32,
+    pub h: i32,
 }
 
 impl Map {
     pub fn generate(seed: u64) -> Map {
         let mut rng = Rng::new(seed);
-        let mut map = Map { tiles: vec![Tile::Sand; (MAP_W * MAP_H) as usize] };
+        let mut map = Map {
+            tiles: vec![Tile::Sand; (MAP_W * MAP_H) as usize],
+            w: MAP_W,
+            h: MAP_H,
+        };
 
         for x in 0..MAP_W {
             for y in 0..MAP_H {
@@ -94,8 +100,26 @@ impl Map {
         map
     }
 
+    pub fn from_rows(rows: &[&str]) -> Map {
+        let h = rows.len() as i32;
+        let w = rows[0].chars().count() as i32;
+        let mut tiles = Vec::with_capacity((w * h) as usize);
+        for row in rows {
+            for ch in row.chars() {
+                tiles.push(match ch {
+                    '#' => Tile::Rock,
+                    '=' => Tile::Road,
+                    '~' => Tile::Water,
+                    ':' => Tile::Dirt,
+                    _ => Tile::Sand,
+                });
+            }
+        }
+        Map { tiles, w, h }
+    }
+
     fn index(&self, x: i32, y: i32) -> Option<usize> {
-        (x >= 0 && y >= 0 && x < MAP_W && y < MAP_H).then(|| (y * MAP_W + x) as usize)
+        (x >= 0 && y >= 0 && x < self.w && y < self.h).then(|| (y * self.w + x) as usize)
     }
 
     fn set(&mut self, x: i32, y: i32, tile: Tile) {
@@ -124,6 +148,78 @@ impl Map {
         self.blocked((pos.x / TILE_SIZE).floor() as i32, (pos.y / TILE_SIZE).floor() as i32)
     }
 
+    /// A* sobre la rejilla, 4 vecinos. Devuelve las celdas desde la siguiente a `from` hasta `to`.
+    pub fn find_path(&self, from: IVec2, to: IVec2) -> Option<Vec<IVec2>> {
+        use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
+
+        if from == to {
+            return Some(Vec::new());
+        }
+        if self.blocked(from.x, from.y) || self.blocked(to.x, to.y) {
+            return None;
+        }
+
+        let n = (self.w * self.h) as usize;
+        let mut cost = vec![u32::MAX; n];
+        let mut parent = vec![-1i32; n];
+        let mut closed = vec![false; n];
+        let mut heap = BinaryHeap::new();
+        let start = (from.y * self.w + from.x) as usize;
+        cost[start] = 0;
+        heap.push(Reverse((0u32, start)));
+
+        while let Some(Reverse((_, current))) = heap.pop() {
+            if closed[current] {
+                continue;
+            }
+            closed[current] = true;
+            let cx = (current as i32) % self.w;
+            let cy = (current as i32) / self.w;
+            if cx == to.x && cy == to.y {
+                let mut path = Vec::new();
+                let mut cursor = current;
+                while parent[cursor] != -1 {
+                    path.push(ivec2((cursor as i32) % self.w, (cursor as i32) / self.w));
+                    cursor = parent[cursor] as usize;
+                }
+                path.reverse();
+                return Some(path);
+            }
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let nx = cx + dx;
+                let ny = cy + dy;
+                if nx < 0 || ny < 0 || nx >= self.w || ny >= self.h || self.blocked(nx, ny) {
+                    continue;
+                }
+                let next = (ny * self.w + nx) as usize;
+                let next_cost = cost[current] + 1;
+                if next_cost < cost[next] {
+                    cost[next] = next_cost;
+                    parent[next] = current as i32;
+                    let estimate = (to.x - nx).abs() + (to.y - ny).abs();
+                    heap.push(Reverse((next_cost + estimate as u32, next)));
+                }
+            }
+        }
+        None
+    }
+
+    pub fn line_blocked(&self, from: Vec2, to: Vec2) -> bool {
+        let distance = (to - from).length();
+        let steps = (distance / (TILE_SIZE / 4.0)).ceil() as i32;
+        (0..=steps).any(|i| {
+            let t = i as f32 / steps.max(1) as f32;
+            self.blocked_at(from + (to - from) * t)
+        })
+    }
+
+    pub fn walkable(&self, pos: Vec2, radius: f32) -> bool {
+        [vec2(0., 0.), vec2(radius, 0.), vec2(-radius, 0.), vec2(0., radius), vec2(0., -radius)]
+            .iter()
+            .all(|offset| !self.blocked_at(pos + *offset))
+    }
+
     pub fn town_spawn(&self) -> Vec2 {
         vec2(TOWN.0 as f32 * TILE_SIZE + TILE_SIZE / 2.0, TOWN.1 as f32 * TILE_SIZE + TILE_SIZE / 2.0)
     }
@@ -134,8 +230,8 @@ impl Map {
 
     pub fn clamp_camera(&self, target: Vec2) -> Vec2 {
         vec2(
-            target.x.clamp(VIEW_W / 2.0, MAP_W as f32 * TILE_SIZE - VIEW_W / 2.0),
-            target.y.clamp(VIEW_H / 2.0, MAP_H as f32 * TILE_SIZE - VIEW_H / 2.0),
+            target.x.clamp(VIEW_W / 2.0, self.w as f32 * TILE_SIZE - VIEW_W / 2.0),
+            target.y.clamp(VIEW_H / 2.0, self.h as f32 * TILE_SIZE - VIEW_H / 2.0),
         )
     }
 }
@@ -177,5 +273,41 @@ mod tests {
                 MAP_H as f32 * TILE_SIZE - VIEW_H / 2.
             )
         );
+    }
+
+    #[test]
+    fn path_goes_around_wall() {
+        let map = Map::from_rows(&["#####", "#...#", "#.#.#", "#...#", "#####"]);
+        let path = map.find_path(ivec2(1, 1), ivec2(3, 3)).expect("hay ruta");
+        assert!(!path.is_empty());
+        assert_eq!(*path.last().unwrap(), ivec2(3, 3));
+        assert!(path.iter().all(|cell| !map.blocked(cell.x, cell.y)));
+        assert_eq!(path.len(), 4);
+    }
+
+    #[test]
+    fn path_to_blocked_is_none() {
+        let map = Map::from_rows(&["#####", "#...#", "#...#", "#####"]);
+        assert!(map.find_path(ivec2(1, 1), ivec2(2, 0)).is_none());
+    }
+
+    #[test]
+    fn path_unreachable_is_none() {
+        let map = Map::from_rows(&["#####", "#.#.#", "#.#.#", "#.#.#", "#####"]);
+        assert!(map.find_path(ivec2(1, 1), ivec2(3, 3)).is_none());
+    }
+
+    #[test]
+    fn line_blocked_detects_wall() {
+        let map = Map::from_rows(&["#####", "#...#", "##.##", "#...#", "#####"]);
+        assert!(map.line_blocked(vec2(48., 48.), vec2(48., 120.)));
+        assert!(!map.line_blocked(vec2(48., 48.), vec2(112., 48.)));
+    }
+
+    #[test]
+    fn walkable_rejects_overlap_with_rock() {
+        let map = Map::from_rows(&["###", "#.#", "###"]);
+        assert!(map.walkable(vec2(48., 48.), 10.0));
+        assert!(!map.walkable(vec2(38., 48.), 10.0));
     }
 }
