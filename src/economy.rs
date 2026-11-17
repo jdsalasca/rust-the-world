@@ -1,9 +1,11 @@
-use crate::actor::{Actor, Life, Weapon};
+use crate::actor::{Actor, Life, MAX_HUNGER, Role, Weapon};
 use macroquad::prelude::*;
 
 pub const FOOD_PRICE: u32 = 5;
 pub const BANDAGE_PRICE: u32 = 8;
 pub const PICKUP_RADIUS: f32 = 16.0;
+pub const TRADE_RADIUS: f32 = 60.0;
+pub const MEAL_HUNGER: f32 = 40.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Item {
@@ -104,6 +106,21 @@ pub fn sell_spare(actor: &mut Actor) -> bool {
     }
 }
 
+pub fn eat(actor: &mut Actor) -> bool {
+    if actor.food == 0 || actor.hunger >= MAX_HUNGER {
+        return false;
+    }
+    actor.food -= 1;
+    actor.hunger = (actor.hunger + MEAL_HUNGER).min(MAX_HUNGER);
+    true
+}
+
+pub fn can_trade(player: &Actor, merchant: &Actor) -> bool {
+    merchant.role == Role::Merchant
+        && merchant.life == Life::Up
+        && (merchant.pos - player.pos).length() <= TRADE_RADIUS
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +172,28 @@ mod tests {
         assert!(sell_spare(&mut player));
         assert_eq!(player.coins, 5);
         assert!(!sell_spare(&mut player));
+    }
+
+    #[test]
+    fn eat_restores_hunger() {
+        let mut player = Actor::new(0, Vec2::ZERO, Role::Player);
+        player.food = 1;
+        player.hunger = 50.0;
+        assert!(eat(&mut player));
+        assert_eq!(player.food, 0);
+        assert!((player.hunger - 90.0).abs() < 0.01);
+        assert!(!eat(&mut player));
+    }
+
+    #[test]
+    fn shop_requires_live_merchant_and_range() {
+        let player = Actor::new(0, Vec2::ZERO, Role::Player);
+        let mut merchant = Actor::new(1, vec2(0., 50.), Role::Merchant);
+        assert!(can_trade(&player, &merchant));
+        merchant.pos = vec2(0., 200.);
+        assert!(!can_trade(&player, &merchant));
+        merchant.pos = vec2(0., 50.);
+        merchant.life = Life::Dead;
+        assert!(!can_trade(&player, &merchant));
     }
 }

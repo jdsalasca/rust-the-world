@@ -112,6 +112,15 @@ impl Weapon {
             Weapon::Axe => 1.0,
         }
     }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Weapon::Fists => "puños",
+            Weapon::Dagger => "daga",
+            Weapon::Sword => "espada",
+            Weapon::Axe => "hacha",
+        }
+    }
 }
 
 pub struct Actor {
