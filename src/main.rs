@@ -1,5 +1,7 @@
+mod actor;
 mod world;
 
+use actor::{Actor, BODY_RADIUS, Role};
 use macroquad::prelude::*;
 use world::{MAP_H, MAP_W, Map, TILE_SIZE, Tile};
 
@@ -22,10 +24,59 @@ fn tile_color(tile: Tile) -> Color {
     }
 }
 
+fn role_color(role: Role) -> Color {
+    match role {
+        Role::Player => Color::from_rgba(232, 224, 200, 255),
+        Role::Guard => Color::from_rgba(74, 111, 165, 255),
+        Role::Merchant => Color::from_rgba(95, 138, 74, 255),
+        Role::Civilian => Color::from_rgba(201, 179, 126, 255),
+        Role::Bandit => Color::from_rgba(165, 59, 59, 255),
+        Role::Dog => Color::from_rgba(107, 74, 47, 255),
+    }
+}
+
+/// Primer punto caminable alrededor de `at`, para no nacer dentro de una roca.
+fn free_spot(map: &Map, at: Vec2) -> Vec2 {
+    let offsets = [vec2(0., 0.), vec2(48., 0.), vec2(-48., 0.), vec2(0., 48.), vec2(0., -48.), vec2(64., 64.), vec2(-64., -64.)];
+    offsets
+        .iter()
+        .map(|offset| at + *offset)
+        .find(|point| map.walkable(*point, BODY_RADIUS + 2.0))
+        .unwrap_or(at)
+}
+
+fn spawn_actors(map: &Map) -> Vec<Actor> {
+    let town = map.town_spawn();
+    let camp = map.camp_spawn();
+    let mut actors = Vec::new();
+    let mut add = |pos: Vec2, role: Role| {
+        let id = actors.len();
+        actors.push(Actor::new(id, free_spot(map, pos), role));
+    };
+
+    add(town, Role::Player);
+    add(town + vec2(64., -48.), Role::Merchant);
+    add(town + vec2(-96., 32.), Role::Guard);
+    add(town + vec2(96., 48.), Role::Guard);
+    add(town + vec2(-48., 80.), Role::Civilian);
+    add(town + vec2(48., 96.), Role::Civilian);
+
+    add(camp + vec2(-48., -32.), Role::Bandit);
+    add(camp + vec2(32., -48.), Role::Bandit);
+    add(camp + vec2(-32., 48.), Role::Bandit);
+    add(camp + vec2(48., 32.), Role::Bandit);
+
+    add(vec2(46., 20.) * TILE_SIZE, Role::Dog);
+    add(vec2(48., 22.) * TILE_SIZE, Role::Dog);
+    add(vec2(44., 22.) * TILE_SIZE, Role::Dog);
+
+    actors
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     let map = Map::generate(7);
-    let mut pos = map.town_spawn();
+    let mut actors = spawn_actors(&map);
     let mut facing_right = true;
     let shot = std::env::args().nth(1).filter(|flag| flag == "--shot");
     let shot_path = std::env::args().nth(2);
@@ -51,19 +102,21 @@ async fn main() {
             dir.x += 1.0;
         }
         if dir != Vec2::ZERO {
-            let delta = dir.normalize() * 140.0 * dt;
-            let next_x = vec2(pos.x + delta.x, pos.y);
-            if map.walkable(next_x, 9.0) {
-                pos.x = next_x.x;
+            let player = &mut actors[0];
+            let delta = dir.normalize() * player.speed() * dt;
+            let next_x = vec2(player.pos.x + delta.x, player.pos.y);
+            if map.walkable(next_x, BODY_RADIUS) {
+                player.pos.x = next_x.x;
             }
-            let next_y = vec2(pos.x, pos.y + delta.y);
-            if map.walkable(next_y, 9.0) {
-                pos.y = next_y.y;
+            let next_y = vec2(player.pos.x, player.pos.y + delta.y);
+            if map.walkable(next_y, BODY_RADIUS) {
+                player.pos.y = next_y.y;
             }
             if delta.x != 0.0 {
                 facing_right = delta.x > 0.0;
             }
         }
+        let player_pos = actors[0].pos;
 
         let mut camera = Camera2D::from_display_rect(Rect::new(
             0.0,
@@ -71,7 +124,7 @@ async fn main() {
             screen_width() / 2.0,
             screen_height() / 2.0,
         ));
-        camera.target = map.clamp_camera(pos);
+        camera.target = map.clamp_camera(player_pos);
         set_camera(&camera);
 
         clear_background(Color::from_rgba(24, 22, 20, 255));
@@ -86,12 +139,20 @@ async fn main() {
                 );
             }
         }
-        draw_circle(pos.x, pos.y, 10.0, WHITE);
-        draw_rectangle(pos.x - 2.0, pos.y - 6.0, 3.0, 3.0, if facing_right { YELLOW } else { BLACK });
+        for body in &actors {
+            draw_circle(body.pos.x, body.pos.y, BODY_RADIUS, role_color(body.role));
+        }
+        draw_rectangle(
+            player_pos.x - 2.0,
+            player_pos.y - 6.0,
+            3.0,
+            3.0,
+            if facing_right { YELLOW } else { BLACK },
+        );
 
         set_default_camera();
         draw_text("rust-the-world", 20.0, 40.0, 32.0, WHITE);
-        draw_text("Esc: salir", 20.0, 70.0, 22.0, GRAY);
+        draw_text("WASD mover · Esc salir", 20.0, 70.0, 22.0, GRAY);
 
         frame += 1;
         if shot.is_some() && frame == 3 {
