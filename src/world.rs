@@ -221,6 +221,16 @@ impl Map {
         .all(|offset| !self.blocked_at(pos + *offset))
     }
 
+    /// Muestrea la recta en pasos de 8 px: sirve para saber si una roca tapa el golpe.
+    pub fn line_blocked(&self, from: Vec2, to: Vec2) -> bool {
+        let distance = (to - from).length();
+        let steps = (distance / (TILE_SIZE / 4.0)).ceil() as i32;
+        (0..=steps.max(1)).any(|index| {
+            let t = index as f32 / steps.max(1) as f32;
+            self.blocked_at(from + (to - from) * t)
+        })
+    }
+
     pub fn town_spawn(&self) -> Vec2 {
         vec2(
             TOWN.0 as f32 * TILE_SIZE + TILE_SIZE / 2.0,
@@ -236,14 +246,11 @@ impl Map {
     }
 
     pub fn clamp_camera(&self, target: Vec2) -> Vec2 {
-        vec2(
-            target
-                .x
-                .clamp(VIEW_W / 2.0, self.w as f32 * TILE_SIZE - VIEW_W / 2.0),
-            target
-                .y
-                .clamp(VIEW_H / 2.0, self.h as f32 * TILE_SIZE - VIEW_H / 2.0),
-        )
+        let half_w = VIEW_W / 2.0;
+        let half_h = VIEW_H / 2.0;
+        let max_x = (self.w as f32 * TILE_SIZE - half_w).max(half_w);
+        let max_y = (self.h as f32 * TILE_SIZE - half_h).max(half_h);
+        vec2(target.x.clamp(half_w, max_x), target.y.clamp(half_h, max_y))
     }
 }
 
@@ -316,5 +323,26 @@ mod tests {
         let map = Map::from_rows(&["###", "#.#", "###"]);
         assert!(map.walkable(vec2(48., 48.), 10.0));
         assert!(!map.walkable(vec2(38., 48.), 10.0));
+    }
+}
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+
+    #[test]
+    fn line_blocked_detects_wall() {
+        let map = Map::from_rows(&["#####", "#...#", "##.##", "#...#", "#####"]);
+        assert!(map.line_blocked(vec2(48., 48.), vec2(48., 120.)));
+        assert!(!map.line_blocked(vec2(48., 48.), vec2(112., 48.)));
+    }
+
+    #[test]
+    fn camera_clamps_on_tiny_map() {
+        let map = Map::from_rows(&["###", "#.#", "###"]);
+        assert_eq!(
+            map.clamp_camera(vec2(-50., -50.)),
+            vec2(VIEW_W / 2., VIEW_H / 2.)
+        );
     }
 }

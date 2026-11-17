@@ -27,10 +27,14 @@ pub fn drop_loot(actor: &mut Actor) -> Vec<Drop> {
         return Vec::new();
     }
     actor.death_handled = true;
-    let mut drops = vec![Drop {
-        pos: actor.pos,
-        item: Item::Coin(2 + (actor.id % 5) as u32),
-    }];
+    let mut drops = Vec::new();
+    if actor.coins > 0 {
+        drops.push(Drop {
+            pos: actor.pos,
+            item: Item::Coin(actor.coins),
+        });
+        actor.coins = 0;
+    }
     if actor.food > 0 {
         drops.push(Drop {
             pos: actor.pos,
@@ -134,7 +138,6 @@ pub fn can_trade(player: &Actor, merchant: &Actor) -> bool {
 mod tests {
     use super::*;
     use crate::actor::{Role, Weapon};
-    use macroquad::prelude::*;
 
     #[test]
     fn loot_drops_once() {
@@ -213,5 +216,15 @@ mod tests {
         merchant.pos = vec2(0., 50.);
         merchant.life = Life::Dead;
         assert!(!can_trade(&player, &merchant));
+    }
+
+    #[test]
+    fn corpse_drops_its_coins() {
+        let mut merchant = Actor::new(1, Vec2::ZERO, Role::Merchant);
+        merchant.coins = 40;
+        merchant.life = Life::Dead;
+        let drops = drop_loot(&mut merchant);
+        assert!(drops.iter().any(|drop| drop.item == Item::Coin(40)));
+        assert_eq!(merchant.coins, 0);
     }
 }

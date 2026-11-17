@@ -229,7 +229,7 @@ impl Actor {
     }
 
     pub fn bandage(&mut self) -> bool {
-        if self.bandages == 0 || !self.is_bleeding() {
+        if self.life != Life::Up || self.bandages == 0 || !self.is_bleeding() {
             return false;
         }
         self.bandages -= 1;
@@ -441,5 +441,16 @@ mod tests {
         actor.wounds[Limb::LegR.index()] = Wound::Severe;
         actor.tick(41.0);
         assert_eq!(actor.life, Life::Dead);
+    }
+
+    #[test]
+    fn downed_cannot_bandage() {
+        let mut actor = npc(Role::Player);
+        actor.life = Life::Downed;
+        actor.hp = 0.0;
+        actor.bandages = 1;
+        actor.wounds[Limb::ArmL.index()] = Wound::Severe;
+        assert!(!actor.bandage());
+        assert_eq!(actor.bandages, 1);
     }
 }

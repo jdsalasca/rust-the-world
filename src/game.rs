@@ -70,7 +70,46 @@ fn spawn_actors(map: &Map) -> Vec<Actor> {
     add(vec2(48., 22.) * TILE_SIZE, Role::Dog);
     add(vec2(44., 22.) * TILE_SIZE, Role::Dog);
 
+    for actor in actors.iter_mut() {
+        match actor.role {
+            Role::Merchant => actor.coins = 40,
+            Role::Guard => actor.coins = 5,
+            Role::Bandit => actor.coins = 2 + (actor.id as u32 % 5),
+            _ => {}
+        }
+    }
+
     actors
+}
+
+fn separate_actors(actors: &mut [Actor], map: &Map) {
+    let minimum = BODY_RADIUS * 2.0;
+    for i in 0..actors.len() {
+        for j in i + 1..actors.len() {
+            if actors[i].life == Life::Dead || actors[j].life == Life::Dead {
+                continue;
+            }
+            let delta = actors[j].pos - actors[i].pos;
+            let distance = delta.length();
+            if distance >= minimum {
+                continue;
+            }
+            let direction = if distance > 0.001 {
+                delta / distance
+            } else {
+                vec2(1., 0.)
+            };
+            let push = (minimum - distance) / 2.0;
+            let left = actors[i].pos - direction * push;
+            let right = actors[j].pos + direction * push;
+            if map.walkable(left, BODY_RADIUS) {
+                actors[i].pos = left;
+            }
+            if map.walkable(right, BODY_RADIUS) {
+                actors[j].pos = right;
+            }
+        }
+    }
 }
 
 impl Game {
@@ -148,6 +187,8 @@ impl Game {
         if self.actors[self.player].life == Life::Dead {
             self.state = GameState::Dead;
         }
+
+        separate_actors(&mut self.actors, &self.map);
     }
 
     pub fn attack(&mut self, aim: Vec2) {
@@ -183,7 +224,7 @@ impl Game {
         let cooldown = self.actors[player].weapon.cooldown();
         let hit = {
             let (before, after) = self.actors.split_at_mut(index);
-            combat::resolve_hit(&before[player], &mut after[0], &mut self.rng)
+            combat::resolve_hit(&before[player], &mut after[0], &mut self.rng, &self.map)
         };
         self.actors[player].attack_cd = cooldown;
         if let Some(hit) = hit {
@@ -349,5 +390,86 @@ mod tests {
         game.attack(vec2(1., 0.));
         assert!(game.actors[bandit].hp < 100.0);
         assert!(game.actors[bandit].hostile_to_player);
+    }
+
+    #[test]
+    fn actors_do_not_stack() {
+        let mut game = Game::new(7);
+        game.actors[1].pos = game.actors[0].pos;
+        game.tick(1.0 / 60.0);
+        let distance = (game.actors[1].pos - game.actors[0].pos).length();
+        assert!(distance >= 14.0, "distancia {distance}");
+    }
+
+    #[test]
+    fn duel_ends_with_a_death() {
+        let mut game = Game::new(7);
+        let guard = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Guard)
+            .unwrap();
+        let bandit = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Bandit)
+            .unwrap();
+        game.actors[bandit].pos = game.actors[guard].pos + vec2(60., 0.);
+        for _ in 0..3600 {
+            game.tick(1.0 / 60.0);
+        }
+        assert!(
+            game.actors[guard].life == Life::Dead || game.actors[bandit].life == Life::Dead,
+            "nadie murio: guardia {:?} bandido {:?}",
+            game.actors[guard].life,
+            game.actors[bandit].life
+        );
+    }
+
+    #[test]
+    fn corpse_drops_only_once_at_game_level() {
+        let mut game = Game::new(7);
+        let bandit = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Bandit)
+            .unwrap();
+        game.actors[bandit].pos = game.actors[0].pos + vec2(20., 0.);
+        game.actors[bandit].life = Life::Dead;
+        game.tick(0.1);
+        let count = game.drops.len();
+        assert!(count > 0);
+        game.tick(0.1);
+        assert_eq!(game.drops.len(), count);
+        game.attack(vec2(1., 0.));
+        assert_eq!(game.drops.len(), count);
+    }
+
+    #[test]
+    fn shop_requires_live_merchant_at_game_level() {
+        let mut game = Game::new(7);
+        let merchant = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Merchant)
+            .unwrap();
+        game.actors[merchant].pos = game.actors[0].pos + vec2(300., 0.);
+        assert!(!game.open_shop());
+        game.actors[merchant].pos = game.actors[0].pos + vec2(30., 0.);
+        game.actors[merchant].life = Life::Dead;
+        assert!(!game.open_shop());
+    }
+
+    #[test]
+    fn attack_ignores_target_behind() {
+        let mut game = Game::new(7);
+        let bandit = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Bandit)
+            .unwrap();
+        game.actors[bandit].pos = game.actors[0].pos - vec2(20., 0.);
+        game.attack(vec2(1., 0.));
+        assert!((game.actors[bandit].hp - 100.0).abs() < 0.01);
     }
 }

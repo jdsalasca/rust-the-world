@@ -38,7 +38,7 @@ fn nearest_hostile(index: usize, actors: &[Actor], range: f32) -> Option<usize> 
     let actor = &actors[index];
     let mut best: Option<(usize, f32)> = None;
     for (other_index, other) in actors.iter().enumerate() {
-        if other.life != Life::Up || !hostile(actor, other) {
+        if other.life == Life::Dead || !hostile(actor, other) {
             continue;
         }
         let distance = (other.pos - actor.pos).length();
@@ -218,7 +218,7 @@ pub fn tick(actors: &mut [Actor], map: &Map, dt: f32, rng: &mut Rng) -> Vec<Stri
         }
         let cooldown = actors[index].weapon.cooldown();
         let (attacker, victim) = pair_mut(actors, index, target);
-        if let Some(hit) = resolve_hit(attacker, victim, rng) {
+        if let Some(hit) = resolve_hit(attacker, victim, rng, map) {
             attacker.attack_cd = cooldown;
             events.push(format!(
                 "El {} hiere al {} ({})",
@@ -240,7 +240,6 @@ mod tests {
     use super::*;
     use crate::actor::{Actor, AiState, Role};
     use crate::world::{Map, Rng};
-    use macroquad::prelude::*;
 
     fn at(id: usize, role: Role, x: i32, y: i32) -> Actor {
         Actor::new(
@@ -264,7 +263,7 @@ mod tests {
         ])
     }
 
-    fn run(actors: &mut Vec<Actor>, map: &Map, seconds: f32) {
+    fn run(actors: &mut [Actor], map: &Map, seconds: f32) {
         let mut rng = Rng::new(5);
         for _ in 0..(seconds * 60.0) as i32 {
             tick(actors, map, 1.0 / 60.0, &mut rng);
@@ -317,7 +316,7 @@ mod tests {
     fn unreachable_target_stays_idle() {
         let map = Map::from_rows(&["#######", "#.....#", "#.###.#", "#.#.#.#", "#######"]);
         let mut actors = vec![at(0, Role::Bandit, 1, 1), at(1, Role::Player, 3, 3)];
-        run(&mut actors, &map, 0.9);
+        run(&mut actors, &map, 2.5);
         assert_eq!(actors[0].ai, AiState::Idle);
     }
 
