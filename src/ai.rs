@@ -81,7 +81,7 @@ fn move_along(actor: &mut Actor, dt: f32) {
         let Some(next) = actor.path.first().copied() else {
             break;
         };
-        let target = vec2(
+        actor.moving = true;        let target = vec2(
             next.x as f32 * TILE_SIZE + TILE_SIZE / 2.0,
             next.y as f32 * TILE_SIZE + TILE_SIZE / 2.0,
         );
@@ -186,6 +186,7 @@ pub fn tick(actors: &mut Vec<Actor>, map: &Map, dt: f32, rng: &mut Rng) -> Vec<S
                     if map.walkable(next, BODY_RADIUS) {
                         actors[index].pos = next;
                         actors[index].facing_right = direction.x >= 0.0;
+                        actors[index].moving = true;
                     }
                 }
             }

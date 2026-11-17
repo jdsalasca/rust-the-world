@@ -142,6 +142,8 @@ pub struct Actor {
     pub spare: Option<Weapon>,
     pub heal: [f32; 4],
     pub death_handled: bool,
+    pub anim_time: f32,
+    pub moving: bool,
 }
 
 impl Actor {
@@ -185,6 +187,8 @@ impl Actor {
             spare: None,
             heal: [0.0; 4],
             death_handled: false,
+            anim_time: 0.0,
+            moving: false,
         }
     }
 

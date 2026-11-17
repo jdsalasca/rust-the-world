@@ -3,13 +3,14 @@ mod ai;
 mod combat;
 mod economy;
 mod log;
+mod render;
 mod world;
 
 use actor::{Actor, BODY_RADIUS, Faction, Life, Role};
 use economy::Drop;
 use log::EventLog;
 use macroquad::prelude::*;
-use world::{MAP_H, MAP_W, Map, Rng, TILE_SIZE, Tile};
+use world::{MAP_H, MAP_W, Map, Rng, TILE_SIZE};
 
 fn window_conf() -> Conf {
     Conf {
@@ -17,27 +18,6 @@ fn window_conf() -> Conf {
         window_width: 1280,
         window_height: 720,
         ..Default::default()
-    }
-}
-
-fn tile_color(tile: Tile) -> Color {
-    match tile {
-        Tile::Sand => Color::from_rgba(194, 161, 90, 255),
-        Tile::Dirt => Color::from_rgba(138, 111, 71, 255),
-        Tile::Road => Color::from_rgba(176, 141, 90, 255),
-        Tile::Rock => Color::from_rgba(74, 74, 85, 255),
-        Tile::Water => Color::from_rgba(59, 110, 165, 255),
-    }
-}
-
-fn role_color(role: Role) -> Color {
-    match role {
-        Role::Player => Color::from_rgba(232, 224, 200, 255),
-        Role::Guard => Color::from_rgba(74, 111, 165, 255),
-        Role::Merchant => Color::from_rgba(95, 138, 74, 255),
-        Role::Civilian => Color::from_rgba(201, 179, 126, 255),
-        Role::Bandit => Color::from_rgba(165, 59, 59, 255),
-        Role::Dog => Color::from_rgba(107, 74, 47, 255),
     }
 }
 
@@ -87,13 +67,34 @@ fn spawn_actors(map: &Map) -> Vec<Actor> {
     actors
 }
 
+fn place_props(map: &Map) -> Vec<(render::Prop, Vec2)> {
+    let town = map.town_spawn();
+    let camp = map.camp_spawn();
+    vec![
+        (render::Prop::Well, town + vec2(-112., -64.)),
+        (render::Prop::Tent, town + vec2(64., -112.)),
+        (render::Prop::Tent, town + vec2(-144., 48.)),
+        (render::Prop::Fire, town + vec2(-16., 40.)),
+        (render::Prop::Crate, town + vec2(48., 96.)),
+        (render::Prop::Crate, town + vec2(-72., -96.)),
+        (render::Prop::Tent, camp + vec2(-16., -96.)),
+        (render::Prop::Fire, camp + vec2(32., 16.)),
+        (render::Prop::Crate, camp + vec2(-80., 32.)),
+        (render::Prop::Cactus, vec2(46., 14.) * TILE_SIZE),
+        (render::Prop::Cactus, vec2(18., 20.) * TILE_SIZE),
+        (render::Prop::Cactus, vec2(28., 31.) * TILE_SIZE),
+        (render::Prop::Cactus, vec2(50., 40.) * TILE_SIZE),
+        (render::Prop::Cactus, vec2(16., 26.) * TILE_SIZE),
+        (render::Prop::Rock, vec2(40., 12.) * TILE_SIZE),
+        (render::Prop::Rock, vec2(22., 34.) * TILE_SIZE),
+        (render::Prop::Rock, vec2(54., 20.) * TILE_SIZE),
+    ]
+}
+
 fn make_camera(map: &Map, focus: Vec2) -> Camera2D {
-    let mut camera = Camera2D::from_display_rect(Rect::new(
-        0.0,
-        0.0,
-        screen_width() / 2.0,
-        screen_height() / 2.0,
-    ));
+    // zoom positivo: macroquad invierte Y solo, así que el mundo queda con Y hacia abajo.
+    let mut camera = Camera2D::default();
+    camera.zoom = vec2(4.0 / screen_width(), 4.0 / screen_height());
     camera.target = map.clamp_camera(focus);
     camera
 }
@@ -101,12 +102,13 @@ fn make_camera(map: &Map, focus: Vec2) -> Camera2D {
 #[macroquad::main(window_conf)]
 async fn main() {
     let map = Map::generate(7);
+    let art = render::Art::load();
+    let props = place_props(&map);
     let mut actors = spawn_actors(&map);
     let mut drops: Vec<Drop> = Vec::new();
     let mut log = EventLog::new();
     let mut rng = Rng::new(11);
-    let mut facing_right = true;
-    let shot = std::env::args().nth(1).filter(|flag| flag == "--shot");
+        let shot = std::env::args().nth(1).filter(|flag| flag == "--shot");
     let shot_path = std::env::args().nth(2);
     let mut frame = 0;
 
@@ -120,6 +122,8 @@ async fn main() {
         let mouse_world = camera.screen_to_world(mouse_position().into());
 
         for body in actors.iter_mut() {
+            body.moving = false;
+            body.anim_time += dt;
             for event in body.tick(dt) {
                 log.push(event);
             }
@@ -143,6 +147,7 @@ async fn main() {
             dir.x += 1.0;
         }
         if dir != Vec2::ZERO && actors[0].life == Life::Up {
+            actors[0].moving = true;
             let player = &mut actors[0];
             let delta = dir.normalize() * player.speed() * dt;
             let next_x = vec2(player.pos.x + delta.x, player.pos.y);
@@ -154,7 +159,7 @@ async fn main() {
                 player.pos.y = next_y.y;
             }
             if delta.x != 0.0 {
-                facing_right = delta.x > 0.0;
+                player.facing_right = delta.x >= 0.0;
             }
         }
 
@@ -222,34 +227,35 @@ async fn main() {
         clear_background(Color::from_rgba(24, 22, 20, 255));
         for y in 0..MAP_H {
             for x in 0..MAP_W {
-                draw_rectangle(
-                    x as f32 * TILE_SIZE,
-                    y as f32 * TILE_SIZE,
-                    TILE_SIZE,
-                    TILE_SIZE,
-                    tile_color(map.tile(x, y)),
+                render::draw_tile(
+                    &art,
+                    map.tile(x, y),
+                    vec2(x as f32 * TILE_SIZE, y as f32 * TILE_SIZE),
                 );
             }
         }
+        for (prop, at) in &props {
+            render::draw_prop(&art, *prop, *at);
+        }
         for drop in &drops {
-            let color = match drop.item {
-                economy::Item::Food => Color::from_rgba(120, 170, 60, 255),
-                economy::Item::Bandage => Color::from_rgba(230, 230, 220, 255),
-                economy::Item::Coin(_) => Color::from_rgba(230, 190, 60, 255),
-                economy::Item::Weapon(_) => Color::from_rgba(150, 150, 160, 255),
-            };
-            draw_rectangle(drop.pos.x - 4.0, drop.pos.y - 4.0, 8.0, 8.0, color);
+            render::draw_item(&art, drop.item, drop.pos);
         }
         for body in &actors {
-            draw_circle(body.pos.x, body.pos.y, BODY_RADIUS, role_color(body.role));
+            let anim = if body.attack_cd > 0.0 {
+                render::AnimKind::Attack
+            } else if body.moving {
+                render::AnimKind::Walk
+            } else {
+                render::AnimKind::Idle
+            };
+            render::draw_actor(
+                art.sheet(body.role),
+                anim,
+                body.anim_time,
+                body.pos,
+                body.facing_right,
+            );
         }
-        draw_rectangle(
-            player_pos.x - 2.0,
-            player_pos.y - 6.0,
-            3.0,
-            3.0,
-            if facing_right { YELLOW } else { BLACK },
-        );
 
         set_default_camera();
         draw_text("rust-the-world", 20.0, 40.0, 32.0, WHITE);
@@ -289,5 +295,7 @@ async fn main() {
         next_frame().await;
     }
 }
+
+
 
 
