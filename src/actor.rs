@@ -43,6 +43,15 @@ impl Limb {
     pub fn index(self) -> usize {
         self as usize
     }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Limb::ArmL => "brazo izquierdo",
+            Limb::ArmR => "brazo derecho",
+            Limb::LegL => "pierna izquierda",
+            Limb::LegR => "pierna derecha",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +130,11 @@ pub struct Actor {
     pub path: Vec<IVec2>,
     pub attack_cd: f32,
     pub facing_right: bool,
+    pub home: Vec2,
+    pub repath: f32,
+    pub think: f32,
+    pub flee_timer: f32,
+    pub give_up: f32,
     pub food: u32,
     pub bandages: u32,
     pub coins: u32,
@@ -159,6 +173,11 @@ impl Actor {
             path: Vec::new(),
             attack_cd: 0.0,
             facing_right: true,
+            home: pos,
+            repath: 0.0,
+            think: 0.0,
+            flee_timer: 0.0,
+            give_up: 0.0,
             food: 0,
             bandages: 0,
             coins: 0,

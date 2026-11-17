@@ -1,10 +1,11 @@
 mod actor;
+mod ai;
 mod combat;
 mod economy;
 mod log;
 mod world;
 
-use actor::{Actor, BODY_RADIUS, Life, Limb, Role};
+use actor::{Actor, BODY_RADIUS, Faction, Life, Role};
 use economy::Drop;
 use log::EventLog;
 use macroquad::prelude::*;
@@ -37,15 +38,6 @@ fn role_color(role: Role) -> Color {
         Role::Civilian => Color::from_rgba(201, 179, 126, 255),
         Role::Bandit => Color::from_rgba(165, 59, 59, 255),
         Role::Dog => Color::from_rgba(107, 74, 47, 255),
-    }
-}
-
-fn limb_name(limb: Limb) -> &'static str {
-    match limb {
-        Limb::ArmL => "brazo izquierdo",
-        Limb::ArmR => "brazo derecho",
-        Limb::LegL => "pierna izquierda",
-        Limb::LegR => "pierna derecha",
     }
 }
 
@@ -133,6 +125,9 @@ async fn main() {
             }
             body.attack_cd = (body.attack_cd - dt).max(0.0);
         }
+        for event in ai::tick(&mut actors, &map, dt, &mut rng) {
+            log.push(event);
+        }
 
         let mut dir = Vec2::ZERO;
         if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
@@ -193,13 +188,26 @@ async fn main() {
                     log.push(format!(
                         "Golpeas a {} ({})",
                         actors[index].name(),
-                        limb_name(hit.limb)
+                        hit.limb.name()
                     ));
-                    if actors[index].life == Life::Dead {
-                        log.push(format!("Matas a {}", actors[index].name()));
-                        drops.extend(economy::drop_loot(&mut actors[index]));
+                    actors[index].hostile_to_player = true;
+                    actors[index].target = Some(0);
+                    actors[index].think = 0.5;
+                    if actors[index].faction == Faction::Town {
+                        for body in actors.iter_mut() {
+                            if body.faction == Faction::Town {
+                                body.hostile_to_player = true;
+                            }
+                        }
                     }
                 }
+            }
+        }
+
+        for body in actors.iter_mut() {
+            if body.life == Life::Dead && !body.death_handled {
+                log.push(format!("{} ha muerto", body.name()));
+                drops.extend(economy::drop_loot(body));
             }
         }
 
@@ -281,3 +289,5 @@ async fn main() {
         next_frame().await;
     }
 }
+
+
