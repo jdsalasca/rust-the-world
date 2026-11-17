@@ -1,9 +1,14 @@
 mod actor;
+mod combat;
+mod economy;
+mod log;
 mod world;
 
-use actor::{Actor, BODY_RADIUS, Role};
+use actor::{Actor, BODY_RADIUS, Life, Limb, Role};
+use economy::Drop;
+use log::EventLog;
 use macroquad::prelude::*;
-use world::{MAP_H, MAP_W, Map, TILE_SIZE, Tile};
+use world::{MAP_H, MAP_W, Map, Rng, TILE_SIZE, Tile};
 
 fn window_conf() -> Conf {
     Conf {
@@ -35,9 +40,26 @@ fn role_color(role: Role) -> Color {
     }
 }
 
+fn limb_name(limb: Limb) -> &'static str {
+    match limb {
+        Limb::ArmL => "brazo izquierdo",
+        Limb::ArmR => "brazo derecho",
+        Limb::LegL => "pierna izquierda",
+        Limb::LegR => "pierna derecha",
+    }
+}
+
 /// Primer punto caminable alrededor de `at`, para no nacer dentro de una roca.
 fn free_spot(map: &Map, at: Vec2) -> Vec2 {
-    let offsets = [vec2(0., 0.), vec2(48., 0.), vec2(-48., 0.), vec2(0., 48.), vec2(0., -48.), vec2(64., 64.), vec2(-64., -64.)];
+    let offsets = [
+        vec2(0., 0.),
+        vec2(48., 0.),
+        vec2(-48., 0.),
+        vec2(0., 48.),
+        vec2(0., -48.),
+        vec2(64., 64.),
+        vec2(-64., -64.),
+    ];
     offsets
         .iter()
         .map(|offset| at + *offset)
@@ -73,10 +95,24 @@ fn spawn_actors(map: &Map) -> Vec<Actor> {
     actors
 }
 
+fn make_camera(map: &Map, focus: Vec2) -> Camera2D {
+    let mut camera = Camera2D::from_display_rect(Rect::new(
+        0.0,
+        0.0,
+        screen_width() / 2.0,
+        screen_height() / 2.0,
+    ));
+    camera.target = map.clamp_camera(focus);
+    camera
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     let map = Map::generate(7);
     let mut actors = spawn_actors(&map);
+    let mut drops: Vec<Drop> = Vec::new();
+    let mut log = EventLog::new();
+    let mut rng = Rng::new(11);
     let mut facing_right = true;
     let shot = std::env::args().nth(1).filter(|flag| flag == "--shot");
     let shot_path = std::env::args().nth(2);
@@ -88,6 +124,16 @@ async fn main() {
         }
 
         let dt = get_frame_time();
+        let camera = make_camera(&map, actors[0].pos);
+        let mouse_world = camera.screen_to_world(mouse_position().into());
+
+        for body in actors.iter_mut() {
+            for event in body.tick(dt) {
+                log.push(event);
+            }
+            body.attack_cd = (body.attack_cd - dt).max(0.0);
+        }
+
         let mut dir = Vec2::ZERO;
         if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
             dir.y -= 1.0;
@@ -101,7 +147,7 @@ async fn main() {
         if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
             dir.x += 1.0;
         }
-        if dir != Vec2::ZERO {
+        if dir != Vec2::ZERO && actors[0].life == Life::Up {
             let player = &mut actors[0];
             let delta = dir.normalize() * player.speed() * dt;
             let next_x = vec2(player.pos.x + delta.x, player.pos.y);
@@ -116,15 +162,53 @@ async fn main() {
                 facing_right = delta.x > 0.0;
             }
         }
+
+        if is_mouse_button_pressed(MouseButton::Left) && actors[0].attack_cd <= 0.0 && actors[0].life == Life::Up {
+            let aim = (mouse_world - actors[0].pos).normalize_or_zero();
+            let mut best: Option<(usize, f32)> = None;
+            for (index, other) in actors.iter().enumerate().skip(1) {
+                if other.life == Life::Dead {
+                    continue;
+                }
+                let offset = other.pos - actors[0].pos;
+                let distance = offset.length();
+                if distance > actors[0].weapon.reach() {
+                    continue;
+                }
+                if aim != Vec2::ZERO && !combat::in_arc(&actors[0], other, aim) {
+                    continue;
+                }
+                if best.is_none_or(|(_, best_distance)| distance < best_distance) {
+                    best = Some((index, distance));
+                }
+            }
+            if let Some((index, _)) = best {
+                let cooldown = actors[0].weapon.cooldown();
+                let hit = {
+                    let (before, after) = actors.split_at_mut(index);
+                    combat::resolve_hit(&before[0], &mut after[0], &mut rng)
+                };
+                actors[0].attack_cd = cooldown;
+                if let Some(hit) = hit {
+                    log.push(format!(
+                        "Golpeas a {} ({})",
+                        actors[index].name(),
+                        limb_name(hit.limb)
+                    ));
+                    if actors[index].life == Life::Dead {
+                        log.push(format!("Matas a {}", actors[index].name()));
+                        drops.extend(economy::drop_loot(&mut actors[index]));
+                    }
+                }
+            }
+        }
+
+        for event in economy::pick_up(&mut actors[0], &mut drops) {
+            log.push(event);
+        }
         let player_pos = actors[0].pos;
 
-        let mut camera = Camera2D::from_display_rect(Rect::new(
-            0.0,
-            0.0,
-            screen_width() / 2.0,
-            screen_height() / 2.0,
-        ));
-        camera.target = map.clamp_camera(player_pos);
+        let camera = make_camera(&map, player_pos);
         set_camera(&camera);
 
         clear_background(Color::from_rgba(24, 22, 20, 255));
@@ -139,6 +223,15 @@ async fn main() {
                 );
             }
         }
+        for drop in &drops {
+            let color = match drop.item {
+                economy::Item::Food => Color::from_rgba(120, 170, 60, 255),
+                economy::Item::Bandage => Color::from_rgba(230, 230, 220, 255),
+                economy::Item::Coin(_) => Color::from_rgba(230, 190, 60, 255),
+                economy::Item::Weapon(_) => Color::from_rgba(150, 150, 160, 255),
+            };
+            draw_rectangle(drop.pos.x - 4.0, drop.pos.y - 4.0, 8.0, 8.0, color);
+        }
         for body in &actors {
             draw_circle(body.pos.x, body.pos.y, BODY_RADIUS, role_color(body.role));
         }
@@ -152,7 +245,30 @@ async fn main() {
 
         set_default_camera();
         draw_text("rust-the-world", 20.0, 40.0, 32.0, WHITE);
-        draw_text("WASD mover · Esc salir", 20.0, 70.0, 22.0, GRAY);
+        draw_text(
+            "WASD mover · clic atacar · Esc salir",
+            20.0,
+            70.0,
+            22.0,
+            GRAY,
+        );
+
+        let lines: Vec<&String> = log.lines().iter().collect();
+        for (index, line) in lines.iter().enumerate() {
+            let y = screen_height() - 24.0 - (lines.len() - 1 - index) as f32 * 22.0;
+            draw_text(line, 20.0, y, 20.0, LIGHTGRAY);
+        }
+
+        if actors[0].life == Life::Dead {
+            draw_rectangle(
+                0.0,
+                0.0,
+                screen_width(),
+                screen_height(),
+                Color::from_rgba(0, 0, 0, 170),
+            );
+            draw_text("HAS MUERTO", screen_width() / 2.0 - 110.0, screen_height() / 2.0, 42.0, WHITE);
+        }
 
         frame += 1;
         if shot.is_some() && frame == 3 {
