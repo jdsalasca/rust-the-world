@@ -8,7 +8,9 @@ pub struct EventLog {
 
 impl EventLog {
     pub fn new() -> EventLog {
-        EventLog { lines: VecDeque::new() }
+        EventLog {
+            lines: VecDeque::new(),
+        }
     }
 
     pub fn push(&mut self, line: String) {

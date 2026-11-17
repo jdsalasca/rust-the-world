@@ -6,7 +6,7 @@ pub const FRAME: f32 = 32.0;
 
 macro_rules! texture {
     ($path:literal) => {{
-        let mut texture = Texture2D::from_file_with_format(
+        let texture = Texture2D::from_file_with_format(
             include_bytes!(concat!("../assets/art/", $path)),
             Some(ImageFormat::Png),
         );
@@ -187,4 +187,3 @@ pub fn draw_actor(sheet: &CharSheet, anim: AnimKind, time: f32, pos: Vec2, facin
         },
     );
 }
-

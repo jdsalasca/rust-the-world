@@ -1,4 +1,4 @@
-use crate::actor::{Actor, BODY_RADIUS, Faction, Life, Role};
+use crate::actor::{Actor, BODY_RADIUS, Faction, Life, Role, Weapon};
 use crate::ai;
 use crate::combat;
 use crate::economy::{self, Drop};
@@ -76,7 +76,10 @@ fn spawn_actors(map: &Map) -> Vec<Actor> {
 impl Game {
     pub fn new(seed: u64) -> Game {
         let map = Map::generate(seed);
-        let actors = spawn_actors(&map);
+        let mut actors = spawn_actors(&map);
+        if let Some(index) = actors.iter().rposition(|body| body.role == Role::Bandit) {
+            actors[index].weapon = Weapon::Axe;
+        }
         Game {
             map,
             actors,
@@ -132,8 +135,13 @@ impl Game {
         for index in 0..self.actors.len() {
             if self.actors[index].life == Life::Dead && !self.actors[index].death_handled {
                 let name = self.actors[index].name();
-                self.log.push(format!("{name} ha muerto"));
-                self.drops.extend(economy::drop_loot(&mut self.actors[index]));
+                if self.actors[index].role == Role::Player {
+                    self.log.push("Has muerto".to_owned());
+                } else {
+                    self.log.push(format!("Ha muerto el {name}"));
+                }
+                self.drops
+                    .extend(economy::drop_loot(&mut self.actors[index]));
             }
         }
 
@@ -180,9 +188,10 @@ impl Game {
         self.actors[player].attack_cd = cooldown;
         if let Some(hit) = hit {
             self.log.push(format!(
-                "Golpeas a {} ({})",
+                "Golpeas al {} ({}) por {:.0}",
                 self.actors[index].name(),
-                hit.limb.name()
+                hit.limb.name(),
+                hit.damage
             ));
             self.actors[index].hostile_to_player = true;
             self.actors[index].target = Some(player);
@@ -219,9 +228,9 @@ impl Game {
 
     pub fn merchant_near(&self) -> Option<usize> {
         let player = self.player;
-        self.actors.iter().position(|other| {
-            other.id != player && economy::can_trade(&self.actors[player], other)
-        })
+        self.actors
+            .iter()
+            .position(|other| other.id != player && economy::can_trade(&self.actors[player], other))
     }
 
     pub fn open_shop(&mut self) -> bool {
@@ -301,5 +310,44 @@ mod tests {
         let hunger = game.actors[0].hunger;
         game.tick(10.0);
         assert!((game.actors[0].hunger - hunger).abs() < 0.001);
+    }
+
+    #[test]
+    fn bandit_and_guard_fight_on_their_own() {
+        let mut game = Game::new(7);
+        let guard = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Guard)
+            .unwrap();
+        let bandit = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Bandit)
+            .unwrap();
+        game.actors[bandit].pos = game.actors[guard].pos + vec2(80., 0.);
+        for _ in 0..600 {
+            game.tick(1.0 / 60.0);
+        }
+        assert!(
+            game.actors[guard].hp < 100.0 || game.actors[bandit].hp < 100.0,
+            "nadie se peleo: guardia {} bandido {}",
+            game.actors[guard].hp,
+            game.actors[bandit].hp
+        );
+    }
+
+    #[test]
+    fn player_attack_hurts_nearest_bandit() {
+        let mut game = Game::new(7);
+        let bandit = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Bandit)
+            .unwrap();
+        game.actors[bandit].pos = game.actors[0].pos + vec2(20., 0.);
+        game.attack(vec2(1., 0.));
+        assert!(game.actors[bandit].hp < 100.0);
+        assert!(game.actors[bandit].hostile_to_player);
     }
 }

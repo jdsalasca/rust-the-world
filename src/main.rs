@@ -48,10 +48,11 @@ fn place_props(map: &Map) -> Vec<(render::Prop, Vec2)> {
 
 fn make_camera(map: &Map, focus: Vec2) -> Camera2D {
     // zoom positivo: macroquad invierte Y solo, así que el mundo queda con Y hacia abajo.
-    let mut camera = Camera2D::default();
-    camera.zoom = vec2(4.0 / screen_width(), 4.0 / screen_height());
-    camera.target = map.clamp_camera(focus);
-    camera
+    Camera2D {
+        zoom: vec2(4.0 / screen_width(), 4.0 / screen_height()),
+        target: map.clamp_camera(focus),
+        ..Default::default()
+    }
 }
 
 #[macroquad::main(window_conf)]
@@ -65,12 +66,15 @@ async fn main() {
         .iter()
         .position(|argument| argument == "--shot")
         .and_then(|index| args.get(index + 1).cloned());
-    if args.iter().any(|argument| argument == "--shop") {
-        if let Some(merchant) = game.actors.iter().position(|body| body.role == Role::Merchant) {
-            let position = game.actors[merchant].pos;
-            game.actors[0].pos = position + vec2(44., 0.);
-            game.open_shop();
-        }
+    if args.iter().any(|argument| argument == "--shop")
+        && let Some(merchant) = game
+            .actors
+            .iter()
+            .position(|body| body.role == Role::Merchant)
+    {
+        let position = game.actors[merchant].pos;
+        game.actors[0].pos = position + vec2(44., 0.);
+        game.open_shop();
     }
     if args.iter().any(|argument| argument == "--dead") {
         game.actors[0].life = Life::Dead;
@@ -202,15 +206,21 @@ async fn main() {
         }
 
         set_default_camera();
-        draw_text("rust-the-world", 22.0, 24.0, 22.0, Color::from_rgba(235, 225, 200, 255));
+        draw_text(
+            "rust-the-world",
+            22.0,
+            24.0,
+            22.0,
+            Color::from_rgba(235, 225, 200, 255),
+        );
         hud::draw(&game);
 
         frame += 1;
-        if frame == 3 {
-            if let Some(path) = &shot {
-                get_screen_data().export_png(path);
-                break;
-            }
+        if frame == 3
+            && let Some(path) = &shot
+        {
+            get_screen_data().export_png(path);
+            break;
         }
 
         next_frame().await;

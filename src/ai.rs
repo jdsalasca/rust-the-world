@@ -60,7 +60,11 @@ pub fn pick_target(index: usize, actors: &[Actor]) -> Option<usize> {
     if matches!(actor.role, Role::Player | Role::Civilian | Role::Merchant) {
         return None;
     }
-    let range = if actor.role == Role::Dog { DOG_DETECT } else { DETECT };
+    let range = if actor.role == Role::Dog {
+        DOG_DETECT
+    } else {
+        DETECT
+    };
     nearest_hostile(index, actors, range)
 }
 
@@ -81,7 +85,8 @@ fn move_along(actor: &mut Actor, dt: f32) {
         let Some(next) = actor.path.first().copied() else {
             break;
         };
-        actor.moving = true;        let target = vec2(
+        actor.moving = true;
+        let target = vec2(
             next.x as f32 * TILE_SIZE + TILE_SIZE / 2.0,
             next.y as f32 * TILE_SIZE + TILE_SIZE / 2.0,
         );
@@ -98,7 +103,8 @@ fn move_along(actor: &mut Actor, dt: f32) {
     }
 }
 
-pub fn tick(actors: &mut Vec<Actor>, map: &Map, dt: f32, rng: &mut Rng) -> Vec<String> {    let mut events = Vec::new();
+pub fn tick(actors: &mut [Actor], map: &Map, dt: f32, rng: &mut Rng) -> Vec<String> {
+    let mut events = Vec::new();
     let count = actors.len();
 
     for actor in actors.iter_mut() {
@@ -144,8 +150,9 @@ pub fn tick(actors: &mut Vec<Actor>, map: &Map, dt: f32, rng: &mut Rng) -> Vec<S
             if actors[index].repath <= 0.0 && actors[index].path.is_empty() {
                 let offset = vec2(rng.range(-96, 96) as f32, rng.range(-96, 96) as f32);
                 let home = actors[index].home;
-                actors[index].path =
-                    map.find_path(cell(actors[index].pos), cell(home + offset)).unwrap_or_default();
+                actors[index].path = map
+                    .find_path(cell(actors[index].pos), cell(home + offset))
+                    .unwrap_or_default();
                 actors[index].repath = 3.0;
             }
             continue;
@@ -160,8 +167,9 @@ pub fn tick(actors: &mut Vec<Actor>, map: &Map, dt: f32, rng: &mut Rng) -> Vec<S
 
         actors[index].ai = AiState::Chase;
         if actors[index].repath <= 0.0 {
-            actors[index].path =
-                map.find_path(cell(actors[index].pos), cell(actors[target].pos)).unwrap_or_default();
+            actors[index].path = map
+                .find_path(cell(actors[index].pos), cell(actors[target].pos))
+                .unwrap_or_default();
             actors[index].repath = 0.5;
             if actors[index].path.is_empty() {
                 actors[index].target = None;
@@ -213,13 +221,13 @@ pub fn tick(actors: &mut Vec<Actor>, map: &Map, dt: f32, rng: &mut Rng) -> Vec<S
         if let Some(hit) = resolve_hit(attacker, victim, rng) {
             attacker.attack_cd = cooldown;
             events.push(format!(
-                "{} hiere a {} ({})",
+                "El {} hiere al {} ({})",
                 attacker.name(),
                 victim.name(),
                 hit.limb.name()
             ));
             if victim.life == Life::Dead {
-                events.push(format!("{} mata a {}", attacker.name(), victim.name()));
+                events.push(format!("El {} mata al {}", attacker.name(), victim.name()));
             }
         }
     }
@@ -323,4 +331,3 @@ mod tests {
         assert!(after < before - 100.0, "antes {before}, despues {after}");
     }
 }
-

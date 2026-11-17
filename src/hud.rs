@@ -4,7 +4,13 @@ use crate::log::EventLog;
 use macroquad::prelude::*;
 
 fn bar(x: f32, y: f32, width: f32, height: f32, fraction: f32, color: Color) {
-    draw_rectangle(x - 2.0, y - 2.0, width + 4.0, height + 4.0, Color::from_rgba(0, 0, 0, 180));
+    draw_rectangle(
+        x - 2.0,
+        y - 2.0,
+        width + 4.0,
+        height + 4.0,
+        Color::from_rgba(0, 0, 0, 180),
+    );
     draw_rectangle(x, y, width, height, Color::from_rgba(60, 50, 45, 255));
     draw_rectangle(x, y, width * fraction.clamp(0.0, 1.0), height, color);
 }
@@ -27,11 +33,32 @@ fn draw_log(log: &EventLog) {
 
 fn draw_stats(game: &Game) {
     let player = game.player();
-    bar(22.0, 86.0, 240.0, 16.0, player.hp / 100.0, Color::from_rgba(190, 60, 60, 255));
-    draw_text(&format!("{:.0}", player.hp.max(0.0)), 26.0, 99.0, 14.0, WHITE);
+    bar(
+        22.0,
+        86.0,
+        240.0,
+        16.0,
+        player.hp / 100.0,
+        Color::from_rgba(190, 60, 60, 255),
+    );
+    let hp_text = format!("{:.0}", player.hp.max(0.0));
+    draw_text(&hp_text, 26.0, 99.0, 14.0, WHITE);
 
-    bar(22.0, 114.0, 240.0, 12.0, player.hunger / 100.0, Color::from_rgba(220, 180, 70, 255));
-    draw_text("hambre", 268.0, 124.0, 16.0, Color::from_rgba(220, 210, 190, 255));
+    bar(
+        22.0,
+        114.0,
+        240.0,
+        12.0,
+        player.hunger / 100.0,
+        Color::from_rgba(220, 180, 70, 255),
+    );
+    draw_text(
+        "hambre",
+        268.0,
+        124.0,
+        16.0,
+        Color::from_rgba(220, 210, 190, 255),
+    );
 
     for (index, wound) in player.wounds.iter().enumerate() {
         let x = 22.0 + index as f32 * 22.0;
@@ -46,9 +73,15 @@ fn draw_stats(game: &Game) {
         Color::from_rgba(200, 190, 175, 255),
     );
 
+    let inventory = format!(
+        "{} monedas   {} · {} comida · {} vendas",
+        player.coins,
+        player.weapon.name(),
+        player.food,
+        player.bandages
+    );
     draw_text(
-        &format!("{} monedas   {} · {} comida · {} vendas",
-            player.coins, player.weapon.name(), player.food, player.bandages),
+        &inventory,
         22.0,
         178.0,
         18.0,
@@ -78,21 +111,41 @@ fn draw_shop(game: &Game) {
         Color::from_rgba(0, 0, 0, 120),
     );
     draw_rectangle(x, y, width, height, Color::from_rgba(20, 18, 16, 255));
-    draw_rectangle_lines(x, y, width, height, 2.0, Color::from_rgba(200, 170, 110, 255));
-    draw_text("MERCADER", x + 24.0, y + 44.0, 30.0, Color::from_rgba(235, 220, 180, 255));
-    draw_text(
-        &format!("Tienes {} monedas", player.coins),
-        x + 24.0,
-        y + 78.0,
-        20.0,
-        GRAY,
+    draw_rectangle_lines(
+        x,
+        y,
+        width,
+        height,
+        2.0,
+        Color::from_rgba(200, 170, 110, 255),
     );
+    draw_text(
+        "MERCADER",
+        x + 24.0,
+        y + 44.0,
+        30.0,
+        Color::from_rgba(235, 220, 180, 255),
+    );
+    let coins_text = format!("Tienes {} monedas", player.coins);
+    draw_text(&coins_text, x + 24.0, y + 78.0, 20.0, GRAY);
     draw_text("1", x + 24.0, y + 118.0, 20.0, WHITE);
     draw_text("Comida", x + 58.0, y + 118.0, 20.0, WHITE);
-    draw_text("5", x + 380.0, y + 118.0, 20.0, Color::from_rgba(240, 220, 160, 255));
+    draw_text(
+        "5",
+        x + 380.0,
+        y + 118.0,
+        20.0,
+        Color::from_rgba(240, 220, 160, 255),
+    );
     draw_text("2", x + 24.0, y + 148.0, 20.0, WHITE);
     draw_text("Venda", x + 58.0, y + 148.0, 20.0, WHITE);
-    draw_text("8", x + 380.0, y + 148.0, 20.0, Color::from_rgba(240, 220, 160, 255));
+    draw_text(
+        "8",
+        x + 380.0,
+        y + 148.0,
+        20.0,
+        Color::from_rgba(240, 220, 160, 255),
+    );
     draw_text("3", x + 24.0, y + 178.0, 20.0, WHITE);
     draw_text("Vender arma de repuesto", x + 58.0, y + 178.0, 20.0, WHITE);
     draw_text("E / Esc  Cerrar", x + 24.0, y + 212.0, 18.0, GRAY);
@@ -154,6 +207,4 @@ pub fn draw(game: &Game) {
         GameState::Dead => draw_death(),
         GameState::Playing => {}
     }
-
 }
-

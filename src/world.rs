@@ -100,6 +100,7 @@ impl Map {
         map
     }
 
+    #[cfg(test)]
     pub fn from_rows(rows: &[&str]) -> Map {
         let h = rows.len() as i32;
         let w = rows[0].chars().count() as i32;
@@ -145,7 +146,10 @@ impl Map {
     }
 
     pub fn blocked_at(&self, pos: Vec2) -> bool {
-        self.blocked((pos.x / TILE_SIZE).floor() as i32, (pos.y / TILE_SIZE).floor() as i32)
+        self.blocked(
+            (pos.x / TILE_SIZE).floor() as i32,
+            (pos.y / TILE_SIZE).floor() as i32,
+        )
     }
 
     /// A* sobre la rejilla, 4 vecinos. Devuelve las celdas desde la siguiente a `from` hasta `to`.
@@ -205,33 +209,40 @@ impl Map {
         None
     }
 
-    pub fn line_blocked(&self, from: Vec2, to: Vec2) -> bool {
-        let distance = (to - from).length();
-        let steps = (distance / (TILE_SIZE / 4.0)).ceil() as i32;
-        (0..=steps).any(|i| {
-            let t = i as f32 / steps.max(1) as f32;
-            self.blocked_at(from + (to - from) * t)
-        })
-    }
-
     pub fn walkable(&self, pos: Vec2, radius: f32) -> bool {
-        [vec2(0., 0.), vec2(radius, 0.), vec2(-radius, 0.), vec2(0., radius), vec2(0., -radius)]
-            .iter()
-            .all(|offset| !self.blocked_at(pos + *offset))
+        [
+            vec2(0., 0.),
+            vec2(radius, 0.),
+            vec2(-radius, 0.),
+            vec2(0., radius),
+            vec2(0., -radius),
+        ]
+        .iter()
+        .all(|offset| !self.blocked_at(pos + *offset))
     }
 
     pub fn town_spawn(&self) -> Vec2 {
-        vec2(TOWN.0 as f32 * TILE_SIZE + TILE_SIZE / 2.0, TOWN.1 as f32 * TILE_SIZE + TILE_SIZE / 2.0)
+        vec2(
+            TOWN.0 as f32 * TILE_SIZE + TILE_SIZE / 2.0,
+            TOWN.1 as f32 * TILE_SIZE + TILE_SIZE / 2.0,
+        )
     }
 
     pub fn camp_spawn(&self) -> Vec2 {
-        vec2(CAMP.0 as f32 * TILE_SIZE + TILE_SIZE / 2.0, CAMP.1 as f32 * TILE_SIZE + TILE_SIZE / 2.0)
+        vec2(
+            CAMP.0 as f32 * TILE_SIZE + TILE_SIZE / 2.0,
+            CAMP.1 as f32 * TILE_SIZE + TILE_SIZE / 2.0,
+        )
     }
 
     pub fn clamp_camera(&self, target: Vec2) -> Vec2 {
         vec2(
-            target.x.clamp(VIEW_W / 2.0, self.w as f32 * TILE_SIZE - VIEW_W / 2.0),
-            target.y.clamp(VIEW_H / 2.0, self.h as f32 * TILE_SIZE - VIEW_H / 2.0),
+            target
+                .x
+                .clamp(VIEW_W / 2.0, self.w as f32 * TILE_SIZE - VIEW_W / 2.0),
+            target
+                .y
+                .clamp(VIEW_H / 2.0, self.h as f32 * TILE_SIZE - VIEW_H / 2.0),
         )
     }
 }
@@ -265,7 +276,10 @@ mod tests {
     #[test]
     fn camera_clamps_to_map() {
         let map = Map::generate(7);
-        assert_eq!(map.clamp_camera(vec2(-500., -500.)), vec2(VIEW_W / 2., VIEW_H / 2.));
+        assert_eq!(
+            map.clamp_camera(vec2(-500., -500.)),
+            vec2(VIEW_W / 2., VIEW_H / 2.)
+        );
         assert_eq!(
             map.clamp_camera(vec2(99_999., 99_999.)),
             vec2(
@@ -295,13 +309,6 @@ mod tests {
     fn path_unreachable_is_none() {
         let map = Map::from_rows(&["#####", "#.#.#", "#.#.#", "#.#.#", "#####"]);
         assert!(map.find_path(ivec2(1, 1), ivec2(3, 3)).is_none());
-    }
-
-    #[test]
-    fn line_blocked_detects_wall() {
-        let map = Map::from_rows(&["#####", "#...#", "##.##", "#...#", "#####"]);
-        assert!(map.line_blocked(vec2(48., 48.), vec2(48., 120.)));
-        assert!(!map.line_blocked(vec2(48., 48.), vec2(112., 48.)));
     }
 
     #[test]

@@ -225,7 +225,7 @@ impl Actor {
     }
 
     pub fn is_bleeding(&self) -> bool {
-        self.wounds.iter().any(|wound| *wound == Wound::Severe)
+        self.wounds.contains(&Wound::Severe)
     }
 
     pub fn bandage(&mut self) -> bool {
@@ -296,7 +296,11 @@ impl Actor {
                     self.hp = 0.0;
                     self.life = Life::Downed;
                     self.downed = 0.0;
-                    events.push(format!("{} cae al suelo", self.name()));
+                    events.push(if self.role == Role::Player {
+                        "Caes al suelo".to_owned()
+                    } else {
+                        format!("El {} cae al suelo", self.name())
+                    });
                 }
             }
             Life::Downed => {
@@ -312,7 +316,7 @@ impl Actor {
                             self.life = Life::Up;
                             self.hp = 10.0;
                             self.downed = 0.0;
-                            events.push(format!("{} se levanta", self.name()));
+                            events.push(format!("El {} se levanta", self.name()));
                         }
                     }
                 }
@@ -327,12 +331,12 @@ impl Actor {
 
     pub fn name(&self) -> &'static str {
         match self.role {
-            Role::Player => "tú",
-            Role::Guard => "el guardia",
-            Role::Merchant => "el mercader",
-            Role::Civilian => "el civil",
-            Role::Bandit => "el bandido",
-            Role::Dog => "el perro",
+            Role::Player => "jugador",
+            Role::Guard => "guardia",
+            Role::Merchant => "mercader",
+            Role::Civilian => "civil",
+            Role::Bandit => "bandido",
+            Role::Dog => "perro",
         }
     }
 }
@@ -349,7 +353,11 @@ mod tests {
     fn hunger_drops_one_per_fifteen_seconds() {
         let mut actor = npc(Role::Player);
         actor.tick(15.0);
-        assert!((actor.hunger - 99.0).abs() < 0.01, "hunger = {}", actor.hunger);
+        assert!(
+            (actor.hunger - 99.0).abs() < 0.01,
+            "hunger = {}",
+            actor.hunger
+        );
     }
 
     #[test]

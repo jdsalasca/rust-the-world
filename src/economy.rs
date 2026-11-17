@@ -32,13 +32,22 @@ pub fn drop_loot(actor: &mut Actor) -> Vec<Drop> {
         item: Item::Coin(2 + (actor.id % 5) as u32),
     }];
     if actor.food > 0 {
-        drops.push(Drop { pos: actor.pos, item: Item::Food });
+        drops.push(Drop {
+            pos: actor.pos,
+            item: Item::Food,
+        });
     }
     if actor.bandages > 0 {
-        drops.push(Drop { pos: actor.pos, item: Item::Bandage });
+        drops.push(Drop {
+            pos: actor.pos,
+            item: Item::Bandage,
+        });
     }
     if actor.weapon != Weapon::Fists {
-        drops.push(Drop { pos: actor.pos, item: Item::Weapon(actor.weapon) });
+        drops.push(Drop {
+            pos: actor.pos,
+            item: Item::Weapon(actor.weapon),
+        });
     }
     drops
 }
@@ -141,9 +150,18 @@ mod tests {
     fn pickup_adds_items() {
         let mut player = Actor::new(0, vec2(50., 50.), Role::Player);
         let mut drops = vec![
-            Drop { pos: vec2(52., 50.), item: Item::Food },
-            Drop { pos: vec2(50., 54.), item: Item::Coin(4) },
-            Drop { pos: vec2(200., 200.), item: Item::Bandage },
+            Drop {
+                pos: vec2(52., 50.),
+                item: Item::Food,
+            },
+            Drop {
+                pos: vec2(50., 54.),
+                item: Item::Coin(4),
+            },
+            Drop {
+                pos: vec2(200., 200.),
+                item: Item::Bandage,
+            },
         ];
         let events = pick_up(&mut player, &mut drops);
         assert_eq!(player.food, 1);
